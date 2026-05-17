@@ -13,6 +13,12 @@ services:
     ports:
       - "5672:5672"
       - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   api:
     build: .
@@ -22,15 +28,18 @@ services:
       DATABASE_URL: postgresql://noderegistry:noderegistry@db:5432/noderegistry
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
     depends_on:
-      - db
-      - rabbitmq
+      db:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
 
   consumer:
     build: ./consumer
     environment:
       RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
     depends_on:
-      - rabbitmq
+      rabbitmq:
+        condition: service_healthy
 
 volumes:
   pgdata:

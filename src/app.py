@@ -1,5 +1,6 @@
 import json
 import os
+import time
 from datetime import datetime, timezone
 import pika
 from fastapi import Depends, FastAPI, HTTPException, Response
@@ -15,16 +16,24 @@ app = FastAPI()
 def publish_event(event: str, node_name: str):
     url = os.environ.get("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/")
     params = pika.URLParameters(url)
-    connection = pika.BlockingConnection(params)
-    channel = connection.channel()
-    channel.queue_declare(queue="node_events", durable=True)
     message = json.dumps({
         "event": event,
         "node_name": node_name,
         "timestamp": datetime.now(timezone.utc).isoformat(),
     })
-    channel.basic_publish(exchange="", routing_key="node_events", body=message)
-    connection.close()
+    for attempt in range(3):
+        try:
+            connection = pika.BlockingConnection(params)
+            channel = connection.channel()
+            channel.queue_declare(queue="node_events", durable=True)
+            channel.basic_publish(exchange="", routing_key="node_events", body=message)
+            connection.close()
+            return
+        except Exception:
+            if attempt < 2:
+                time.sleep(2)
+            else:
+                raise
 
 @app.get("/health")
 def health(db: Session = Depends(get_db)):
